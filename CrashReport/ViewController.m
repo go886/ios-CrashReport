@@ -105,7 +105,27 @@ NSString* runTask(NSString* path, ...) {
                 }
             }
         }
-        if (_name ) {
+        
+        if (!_name) {
+            NSError* err;
+            NSRegularExpression* re = [NSRegularExpression regularExpressionWithPattern:@"Process:             (.*?) "
+                                                                                options:NSRegularExpressionCaseInsensitive
+                                                                                  error:&err];
+            if (re && !err) {
+                NSTextCheckingResult* firstMatch = [re firstMatchInString:info
+                                                                  options:0
+                                                                    range:NSMakeRange(0, info.length)];
+                if (firstMatch) {
+                    if (firstMatch.numberOfRanges == 2) {
+                        _name = trim([info substringWithRange:[firstMatch rangeAtIndex:1]]);
+                    }
+                }
+            }
+        }
+        
+        
+        
+        if (_name && _name.length) {
             //0x3517a3 walkman +
             //walkman                             0x23489
             NSError* err;
