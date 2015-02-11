@@ -80,9 +80,13 @@ NSString* runTask(NSString* path, ...) {
 @property(nonatomic,strong,readonly) NSString* uuid;
 @property(nonatomic,strong,readonly) NSString* cpuType;
 @property(nonatomic,strong,readonly) NSArray*  stackList;
+@property(nonatomic,assign,readonly) BOOL isValid;
 @end
 
 @implementation CrashInfo
+-(BOOL)isValid {
+    return (_name && _uuid && _cpuType);
+}
 -(instancetype)initWithInfo:(NSString*)info {
     self = [super init];
     if(self) {
@@ -108,7 +112,7 @@ NSString* runTask(NSString* path, ...) {
         
         if (!_name) {
             NSError* err;
-            NSRegularExpression* re = [NSRegularExpression regularExpressionWithPattern:@"Process:             (.*?) "
+            NSRegularExpression* re = [NSRegularExpression regularExpressionWithPattern:@"Binary Images:\n.*? - .*? (.*?) (.*?) <(.*?)> "
                                                                                 options:NSRegularExpressionCaseInsensitive
                                                                                   error:&err];
             if (re && !err) {
@@ -116,18 +120,25 @@ NSString* runTask(NSString* path, ...) {
                                                                   options:0
                                                                     range:NSMakeRange(0, info.length)];
                 if (firstMatch) {
-                    if (firstMatch.numberOfRanges == 2) {
+                    if (firstMatch.numberOfRanges == 4) {
                         _name = trim([info substringWithRange:[firstMatch rangeAtIndex:1]]);
+                        _cpuType = trim([info substringWithRange:[firstMatch rangeAtIndex:2]]);
+                        _uuid = trim([info substringWithRange:[firstMatch rangeAtIndex:3]]);
                     }
                 }
             }
+
         }
         
-        
-        
         if (_name && _name.length) {
-            //0x3517a3 walkman +
-            //walkman                             0x23489
+            /*
+            2 xiami                         	0x004e1369 0xc2000 + 4322153
+             
+            1. 模块号：这里是2
+            2. 二进制库名：这里是xiami
+            3. 调用方法的地址：这里是0x004e1369
+            4. 第四部分分为两列，基地址和偏移地址。此处基地址为0xc2000，偏移地址为4322153。基地址指向crash的模块（也是模块的load地址）如UIKit。偏移地址指向crash代码的行数。
+            */
             NSError* err;
             NSRegularExpression* re = [NSRegularExpression regularExpressionWithPattern:[NSString stringWithFormat:@"%@.*?0x(.*?) ", _name]
                                                                                 options:NSRegularExpressionCaseInsensitive
@@ -178,13 +189,21 @@ NSString* runTask(NSString* path, ...) {
     NSOpenPanel *oPanel = [NSOpenPanel openPanel];
     [oPanel setCanChooseDirectories:FALSE];
     [oPanel setAllowsMultipleSelection:YES];
+    [oPanel setAllowedFileTypes:@[@"dSYM"]];
     
-    if (NSModalResponseOK == [oPanel runModalForTypes:@[@"dSYM"]]) {
-        for (NSURL* url in [oPanel URLs]) {
-            [self loadDSYM:url.path];
+    [oPanel beginSheetModalForWindow:[self.view window] completionHandler:^(NSInteger result) {
+        if (NSModalResponseOK == result) {
+            for (NSURL* url in [oPanel URLs]) {
+                [self loadDSYM:url.path];
+            }
         }
-       // [self loadDSYM:[[[oPanel URLs] objectAtIndex:0] path]];
-    }
+    }];
+//    if (NSModalResponseOK == [oPanel runModalForTypes:@[@"dSYM"]]) {
+//        for (NSURL* url in [oPanel URLs]) {
+//            [self loadDSYM:url.path];
+//        }
+//       // [self loadDSYM:[[[oPanel URLs] objectAtIndex:0] path]];
+//    }
 }
 
 -(void)loadDSYM:(NSString*)path {
@@ -213,15 +232,27 @@ NSString* runTask(NSString* path, ...) {
         return;
     }
     
-    NSString* string = runDump(@"--lookup", addr, @"-arch", dsym.cpuType, dsym.path);
+    NSString* string = runDump(@"--lookup", addr, @"-arch", dsym.cpuType, dsym.path, @"--uuid");
     [self.resultTextView setString:string];
 }
 
 //NSTextViewDelegate
 - (void)textDidChange:(NSNotification *)notification {
     NSString* str = self.crashTextView.string;
-    _crashInfo = [[CrashInfo alloc] initWithInfo:str];
+    if (str && trim(str).length) {
+        _crashInfo = [[CrashInfo alloc] initWithInfo:str];
+        if (_crashInfo.isValid) {
+            self.logField.stringValue = [NSString stringWithFormat:@"日志信息: uuid(%@) cpu:%@  Process:%@",
+                                         _crashInfo.uuid,
+                                         _crashInfo.cpuType,
+                                         _crashInfo.name];
+            [self.stackTableView reloadData];
+            return;
+        }
+    }
+    
     [self.stackTableView reloadData];
+    self.logField.stringValue = @"";
 }
 
 #pragma  NSTableViewDelegate

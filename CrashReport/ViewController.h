@@ -11,6 +11,7 @@
 @interface ViewController : NSViewController<NSTextViewDelegate, NSTableViewDelegate, NSTableViewDataSource>
 @property(nonatomic,weak)IBOutlet NSTextField* field;
 @property(nonatomic,weak)IBOutlet NSTextField* titleField;
+@property(nonatomic,weak)IBOutlet NSTextField* logField;
 @property(nonatomic,strong)IBOutlet NSTextView* crashTextView;
 @property(nonatomic,strong)IBOutlet NSTableView* stackTableView;
 @property(nonatomic,strong)IBOutlet NSTextView* resultTextView;
