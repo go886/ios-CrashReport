@@ -65,7 +65,7 @@ NSString* runTask(NSString* path, ...) {
                                                                 range:NSMakeRange(0, string.length)];
             if (firstMatch) {
                 if (firstMatch.numberOfRanges == 3) {
-                    _uuid = trim([string substringWithRange:[firstMatch rangeAtIndex:1]]);
+                    _uuid = [[trim([string substringWithRange:[firstMatch rangeAtIndex:1]]) stringByReplacingOccurrencesOfString:@"-" withString:@""] uppercaseString];
                     _cpuType = [string substringWithRange:[firstMatch rangeAtIndex:2]];
                 }
             }
@@ -127,8 +127,9 @@ NSString* runTask(NSString* path, ...) {
                     }
                 }
             }
-
         }
+        
+        _uuid = [[_uuid stringByReplacingOccurrencesOfString:@"-" withString:@""] uppercaseString];
         
         if (_name && _name.length) {
             /*
@@ -178,12 +179,26 @@ NSString* runTask(NSString* path, ...) {
     [self.stackTableView setDelegate:self];
     [self.stackTableView setDataSource:self];
     self.stackTableView.headerView.hidden = YES;
+    self.comboBox.delegate = self;
+    
+    [self searchDSYMPaths];
 }
 
 - (void)setRepresentedObject:(id)representedObject {
     [super setRepresentedObject:representedObject];
 
     // Update the view, if already loaded.
+}
+-(void)searchDSYMPaths {
+    NSString* s = runTask(@"/usr/bin/mdfind", @"-name", @".dSYM", nil);
+    NSArray* paths = [s componentsSeparatedByString:@"\n"];
+    [self.comboBox addItemsWithObjectValues:paths];
+    for (NSString* path in paths) {
+        if (![_dsymMap objectForKey:path]) {
+            DsymInfo* info = [[DsymInfo alloc] initWithPath:path];
+            [_dsymMap setObject:info forKey:path];
+        }
+    }
 }
 -(IBAction)onClick:(id)sender {
     NSOpenPanel *oPanel = [NSOpenPanel openPanel];
@@ -210,7 +225,8 @@ NSString* runTask(NSString* path, ...) {
     DsymInfo* info = [[DsymInfo alloc] initWithPath:path];
     [_dsymMap setObject:info forKey:path];
     
-    [self.field setStringValue:path];
+    [self.comboBox setStringValue:path];
+    //[self.field setStringValue:path];
     [self.titleField setStringValue:[NSString stringWithFormat:@"拷贝原始crash日志到这里 uuid(%@) cpu:%@", info.uuid, info.cpuType]];
 }
 
@@ -222,13 +238,14 @@ NSString* runTask(NSString* path, ...) {
         }
     }
     
-    return _dsymMap.count ? _dsymMap[_dsymMap.allKeys[0]] : nil;
+    return nil;
 }
 
 -(void)dumpForAdd:(NSString*)addr {
     //dwarfdump –lookup 0x000036d2 –arch armv6 MyApp.app.dSYM
     DsymInfo* dsym = [self findMatchDsym];
     if (!dsym) {
+        [self.resultTextView setString:@"dSYM文件不匹配"];
         return;
     }
     
@@ -276,5 +293,14 @@ NSString* runTask(NSString* path, ...) {
     NSString* addr = [_crashInfo.stackList objectAtIndex:row];
     return addr;
    // return @{@"title": addr, @"name":@"a", @"objectValue": @"a"};
+}
+#pragma NSComboBoxDelegate
+- (void)comboBoxSelectionDidChange:(NSNotification *)notification {
+    NSComboBox* comboBox = (NSComboBox*)notification.object;
+    NSString* title = [comboBox stringValue];
+    DsymInfo* info = [_dsymMap objectForKey:title];
+    if (info) {
+        [self.titleField setStringValue:[NSString stringWithFormat:@"拷贝原始crash日志到这里 uuid(%@) cpu:%@", info.uuid, info.cpuType]];
+    }
 }
 @end

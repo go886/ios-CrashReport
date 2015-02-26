@@ -10,6 +10,7 @@
 
 @interface ViewController : NSViewController<NSTextViewDelegate, NSTableViewDelegate, NSTableViewDataSource>
 @property(nonatomic,weak)IBOutlet NSTextField* field;
+@property(nonatomic,weak)IBOutlet NSComboBox* comboBox;
 @property(nonatomic,weak)IBOutlet NSTextField* titleField;
 @property(nonatomic,weak)IBOutlet NSTextField* logField;
 @property(nonatomic,strong)IBOutlet NSTextView* crashTextView;
