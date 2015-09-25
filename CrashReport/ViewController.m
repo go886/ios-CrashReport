@@ -112,18 +112,51 @@ NSString* runTask(NSString* path, ...) {
         
         if (!_name) {
             NSError* err;
-            NSRegularExpression* re = [NSRegularExpression regularExpressionWithPattern:@"Binary Images:\n.*? - .*? (.*?) (.*?) <(.*?)> "
+            NSRegularExpression* re = [NSRegularExpression regularExpressionWithPattern:@"Process:(.*?)\n"
                                                                                 options:NSRegularExpressionCaseInsensitive
                                                                                   error:&err];
+            
+            
             if (re && !err) {
                 NSTextCheckingResult* firstMatch = [re firstMatchInString:info
                                                                   options:0
                                                                     range:NSMakeRange(0, info.length)];
-                if (firstMatch) {
-                    if (firstMatch.numberOfRanges == 4) {
-                        _name = trim([info substringWithRange:[firstMatch rangeAtIndex:1]]);
-                        _cpuType = trim([info substringWithRange:[firstMatch rangeAtIndex:2]]);
-                        _uuid = trim([info substringWithRange:[firstMatch rangeAtIndex:3]]);
+                if (firstMatch.numberOfRanges == 2) {
+                    _name = trim([info substringWithRange:[firstMatch rangeAtIndex:1]]);
+                    _name = [[_name componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceCharacterSet]] objectAtIndex:0];
+                }
+            }
+            
+            if (_name) {
+                re = [NSRegularExpression regularExpressionWithPattern:[NSString stringWithFormat:@"Binary Images:.*?%@(.*?)<(.*?)>", _name]
+                                                               options:NSRegularExpressionCaseInsensitive|NSRegularExpressionDotMatchesLineSeparators
+                                                                 error:&err];
+                
+                if(re && !err) {
+                    NSTextCheckingResult* firstMatch = [re firstMatchInString:info
+                                                                      options:0
+                                                                        range:NSMakeRange(0, info.length)];
+                    if (firstMatch.numberOfRanges == 3) {
+                        _cpuType = trim([info substringWithRange:[firstMatch rangeAtIndex:1]]);
+                        _uuid = trim([info substringWithRange:[firstMatch rangeAtIndex:2]]);
+                    }
+
+                }
+            }else {
+                NSError* err;
+                NSRegularExpression* re = [NSRegularExpression regularExpressionWithPattern:@"Binary Images:\n.*? - .*? (.*?) (.*?) <(.*?)> "
+                                                                                    options:NSRegularExpressionCaseInsensitive
+                                                                                      error:&err];
+                if (re && !err) {
+                    NSTextCheckingResult* firstMatch = [re firstMatchInString:info
+                                                                      options:0
+                                                                        range:NSMakeRange(0, info.length)];
+                    if (firstMatch) {
+                        if (firstMatch.numberOfRanges == 4) {
+                            _name = trim([info substringWithRange:[firstMatch rangeAtIndex:1]]);
+                            _cpuType = trim([info substringWithRange:[firstMatch rangeAtIndex:2]]);
+                            _uuid = trim([info substringWithRange:[firstMatch rangeAtIndex:3]]);
+                        }
                     }
                 }
             }
