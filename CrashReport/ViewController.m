@@ -319,8 +319,11 @@ NSString* runTask(NSString* path, ...) {
             static char key;
             NSMutableDictionary* dict = [NSMutableDictionary dictionary];
             for (NSTextCheckingResult* r in match) {
-                NSString* addrName = [str substringWithRange:[r rangeAtIndex:2]];
-                [dict setObject:r forKey:addrName];
+                NSString* bundleName = [str substringWithRange:[r rangeAtIndex:1]];
+                if ([bundleName isEqualToString:_crashInfo.name]) {
+                    NSString* addrName = [str substringWithRange:[r rangeAtIndex:2]];
+                    [dict setObject:r forKey:addrName];
+                }
             }
             [dict enumerateKeysAndObjectsWithOptions:NSEnumerationConcurrent usingBlock:^(NSString*  _Nonnull addr, NSTextCheckingResult*  _Nonnull r, BOOL * _Nonnull stop) {
                 NSString* expinfo = trim(runAtos(@"-o", path, addr, @"-arch", dsym.cpuType));
@@ -331,9 +334,12 @@ NSString* runTask(NSString* path, ...) {
             NSEnumerator* itor = match.reverseObjectEnumerator;
             for (NSTextCheckingResult* r in itor) {
                 NSString* addrName = [str substringWithRange:[r rangeAtIndex:2]];
-                NSString* expinfo = objc_getAssociatedObject([dict objectForKey:addrName], &key);
-                if (expinfo && expinfo.length && ![expinfo isEqualTo:addrName]) {
-                    [outstring replaceCharactersInRange:[r rangeAtIndex:2] withString:expinfo];
+                id obj = [dict objectForKey:addrName];
+                if (obj) {
+                    NSString* expinfo = objc_getAssociatedObject(obj, &key);
+                    if (expinfo && expinfo.length && ![expinfo isEqualTo:addrName]) {
+                        [outstring replaceCharactersInRange:[r rangeAtIndex:2] withString:expinfo];
+                    }
                 }
             }
         }
