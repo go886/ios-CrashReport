@@ -7,6 +7,7 @@
 //
 
 #import "ViewController.h"
+#import <objc/message.h>
 
 NSString* trim(NSString* str) {
     return [str stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
@@ -41,6 +42,8 @@ NSString* runTask(NSString* path, ...) {
 
 
 #define runDump(...) runTask(@"/usr/bin/dwarfdump", __VA_ARGS__, nil)
+
+#define runAtos(...) runTask(@"/usr/bin/atos", __VA_ARGS__, nil)
 
 @interface DsymInfo : NSObject
 @property(nonatomic,strong,readonly) NSString* path;
@@ -254,6 +257,20 @@ NSString* runTask(NSString* path, ...) {
 //    }
 }
 
+-(IBAction)onDumpAll:(id)sender {
+    NSString* str = self.crashTextView.string;
+    if (str && trim(str).length) {
+            DsymInfo* dsym = [self findMatchDsym];
+            if (!dsym) {
+                [self.resultTextView setString:@"dSYM文件不匹配"];
+                return;
+            }
+            
+            [self.resultTextView setString:[self dumpAll:str dsym:dsym]];
+    }
+}
+
+
 -(void)loadDSYM:(NSString*)path {
     DsymInfo* info = [[DsymInfo alloc] initWithPath:path];
     [_dsymMap setObject:info forKey:path];
@@ -282,8 +299,47 @@ NSString* runTask(NSString* path, ...) {
         return;
     }
     
-    NSString* string = runDump(@"--lookup", addr, @"-arch", dsym.cpuType, dsym.path, @"--uuid");
+//    NSString* path = [dsym.path stringByAppendingPathComponent:[NSString stringWithFormat:@"Contents/Resources/DWARF/%@", _crashInfo.name]];
+//    NSString* string = runAtos(@"atos", @"-o", path, addr);
+      NSString* string = runDump(@"--lookup", addr, @"-arch", dsym.cpuType, dsym.path, @"--uuid");
     [self.resultTextView setString:string];
+}
+
+
+-(NSString*)dumpAll:(NSString*)str dsym:(DsymInfo*)dsym {
+    NSString* path = [dsym.path stringByAppendingPathComponent:[NSString stringWithFormat:@"Contents/Resources/DWARF/%@", _crashInfo.name]];
+    NSMutableString* outstring = [NSMutableString stringWithString:str];
+    NSError* err;
+    NSRegularExpression* re = [NSRegularExpression regularExpressionWithPattern:@"^\\d+?\\s+(.*?)\\s+(.*?) "
+                                                                        options:NSRegularExpressionCaseInsensitive|NSRegularExpressionAnchorsMatchLines
+                                                                          error:&err];
+    if (re && !err) {
+        NSArray* match = [re matchesInString:str options:NSMatchingReportCompletion range:NSMakeRange(0, str.length)];
+        if (match.count) {
+            static char key;
+            NSMutableDictionary* dict = [NSMutableDictionary dictionary];
+            for (NSTextCheckingResult* r in match) {
+                NSString* addrName = [str substringWithRange:[r rangeAtIndex:2]];
+                [dict setObject:r forKey:addrName];
+            }
+            [dict enumerateKeysAndObjectsWithOptions:NSEnumerationConcurrent usingBlock:^(NSString*  _Nonnull addr, NSTextCheckingResult*  _Nonnull r, BOOL * _Nonnull stop) {
+                NSString* expinfo = trim(runAtos(@"-o", path, addr, @"-arch", dsym.cpuType));
+                // NSString* expinfo = trim(runDump(@"--lookup", addr, @"-arch", dsym.cpuType, dsym.path, @"--uuid"));
+                objc_setAssociatedObject(r, &key, expinfo, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            }];
+            
+            NSEnumerator* itor = match.reverseObjectEnumerator;
+            for (NSTextCheckingResult* r in itor) {
+                NSString* addrName = [str substringWithRange:[r rangeAtIndex:2]];
+                NSString* expinfo = objc_getAssociatedObject([dict objectForKey:addrName], &key);
+                if (expinfo && expinfo.length && ![expinfo isEqualTo:addrName]) {
+                    [outstring replaceCharactersInRange:[r rangeAtIndex:2] withString:expinfo];
+                }
+            }
+        }
+    }
+    
+    return outstring;
 }
 
 //NSTextViewDelegate
@@ -297,6 +353,13 @@ NSString* runTask(NSString* path, ...) {
                                          _crashInfo.cpuType,
                                          _crashInfo.name];
             [self.stackTableView reloadData];
+            //
+            
+            DsymInfo* dsym = [self findMatchDsym];
+            if (!dsym) {
+                [self.resultTextView setString:@"dSYM文件不匹配"];
+                return;
+            }
             return;
         }
     }
